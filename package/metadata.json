@@ -1,0 +1,24 @@
+{
+    "KPlugin": {
+        "Id": "com.stark.ai-usage-monitor",
+        "Name": "AI Usage Monitor",
+        "Description": "Shows the weekly ChatGPT Codex allowance and the current Claude 5-hour usage window",
+        "Category": "System Information",
+        "Icon": "view-statistics",
+        "Authors": [
+            {
+                "Name": "Stark Botha"
+            }
+        ],
+        "License": "MIT",
+        "Version": "1.0.0",
+        "EnabledByDefault": true,
+        "FormFactors": [
+            "desktop",
+            "tablet",
+            "handset"
+        ]
+    },
+    "KPackageStructure": "Plasma/Applet",
+    "X-Plasma-API-Minimum-Version": "6.0"
+}
