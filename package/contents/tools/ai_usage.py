@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Combine ChatGPT and Claude usage into one JSON payload for the widget.
+"""Combine the usage of each AI subscription into one JSON payload for the widget.
 
-Each provider is read independently, so a failure in one (for example Codex
-being signed out) still leaves the other provider's reading intact. The
-output always has this shape:
+The widget shows the Claude subscription that the Claude Code CLI is signed
+in to. The ChatGPT reader stays available but is off; set
+``INCLUDE_CHATGPT`` to True to read it again.
 
-    {"chatgpt": {"ok": ...}, "claude": {"ok": ...}}
+Each provider is read independently, so a failure in one still leaves the
+other reading intact. The output has this shape, with the ``chatgpt`` key
+only when it is enabled:
+
+    {"claude": {"ok": ...}, "chatgpt": {"ok": ...}}
 """
 
 from __future__ import annotations
@@ -23,6 +27,11 @@ import chatgpt_usage  # noqa: E402
 import claude_usage  # noqa: E402
 
 
+# The ChatGPT reading is off. Its helper starts the Codex app server, so it
+# is skipped completely instead of being read and then hidden.
+INCLUDE_CHATGPT = False
+
+
 def read_provider(reader: Callable[[], Dict[str, Any]], expected_error: type) -> Dict[str, Any]:
     """Run one provider reader and convert any failure into an error payload."""
     try:
@@ -34,21 +43,22 @@ def read_provider(reader: Callable[[], Dict[str, Any]], expected_error: type) ->
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Read ChatGPT and Claude usage together.")
+    parser = argparse.ArgumentParser(description="Read the usage of each AI subscription together.")
     parser.add_argument("--pretty", action="store_true", help="indent the JSON output")
     args = parser.parse_args()
 
     payload = {
-        "chatgpt": read_provider(
-            lambda: chatgpt_usage.summarize(chatgpt_usage.app_server_usage()),
-            chatgpt_usage.UsageError,
-        ),
         "claude": read_provider(claude_usage.summarize, claude_usage.UsageError),
     }
+    if INCLUDE_CHATGPT:
+        payload["chatgpt"] = read_provider(
+            lambda: chatgpt_usage.summarize(chatgpt_usage.app_server_usage()),
+            chatgpt_usage.UsageError,
+        )
     print(json.dumps(payload, indent=2 if args.pretty else None, sort_keys=True))
 
-    # Report failure only when neither provider produced a reading.
-    any_ok = payload["chatgpt"].get("ok") or payload["claude"].get("ok")
+    # Report failure only when no provider produced a reading.
+    any_ok = any(section.get("ok") for section in payload.values())
     return 0 if any_ok else 1
 
 

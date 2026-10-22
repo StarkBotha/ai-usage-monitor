@@ -9,6 +9,10 @@ import org.kde.plasma.components as PlasmaComponents
 PlasmoidItem {
     id: root
 
+    // The ChatGPT meter is off. Its code stays so that it can be enabled again;
+    // set this to true and set INCLUDE_CHATGPT to True in tools/ai_usage.py.
+    readonly property bool showChatgpt: false
+
     // ChatGPT reading: remaining weekly Codex allowance and its reset time.
     // Keep the last successful reading visible while a refresh runs or fails.
     property int chatgptRemainingPercent: -1
@@ -22,6 +26,12 @@ PlasmoidItem {
     property int claudeWeeklyPercent: -1
     property double claudeWeeklyResetAt: 0
     property string claudeError: ""
+
+    // Short name of the account that the Claude CLI is signed in to. The
+    // panel shows it first, so it is clear which subscription the meters
+    // show. The helper takes it from the local labels file, else from the
+    // part of the email before "@". Empty if unknown.
+    property string claudeAccountName: ""
 
     // Shared refresh state for the single combined helper.
     property bool isLoading: false
@@ -99,6 +109,7 @@ PlasmoidItem {
         claudeFiveHourResetAt = Number(fiveHour.resetAt || 0)
         claudeWeeklyResetAt = Number(weekly.resetAt || 0)
         claudeWeeklyPercent = Number(weekly.remainingPercent)
+        claudeAccountName = section.accountLabel || ""
         claudeError = ""
 
         claudeFiveHourPercent = Number(fiveHour.remainingPercent)
@@ -108,7 +119,7 @@ PlasmoidItem {
     function applyOutput(output) {
         try {
             var payload = JSON.parse(output)
-            applyChatgpt(payload.chatgpt)
+            if (showChatgpt) applyChatgpt(payload.chatgpt)
             applyClaude(payload.claude)
         } catch (error) {
             chatgptError = "Invalid helper response"
@@ -153,7 +164,7 @@ PlasmoidItem {
     // Show each provider as its app icon followed by its usage meters. Errors
     // are listed in the tooltip because the panel only has room for "ERR".
     toolTipMainText: "AI Usage"
-    toolTipSubText: [chatgptError.length > 0 ? "ChatGPT: " + chatgptError : "",
+    toolTipSubText: [showChatgpt && chatgptError.length > 0 ? "ChatGPT: " + chatgptError : "",
                      claudeError.length > 0 ? "Claude: " + claudeError : ""]
         .filter(function(line) { return line.length > 0 }).join("\n")
 
@@ -167,8 +178,19 @@ PlasmoidItem {
         Layout.minimumWidth: implicitWidth
         Layout.minimumHeight: implicitHeight
 
+        // Name the signed-in Claude account first, because the CLI can be
+        // signed in to either the personal or the work subscription.
+        PlasmaComponents.Label {
+            visible: root.claudeAccountName.length > 0
+            text: root.claudeAccountName
+            opacity: 0.7
+            Layout.rightMargin: Kirigami.Units.smallSpacing
+        }
+
         // Use the installed ChatGPT app icon, falling back to a generic chat icon.
+        // The ChatGPT icon, meter and separator show only when showChatgpt is true.
         Kirigami.Icon {
+            visible: root.showChatgpt
             source: "chatgpt"
             fallback: "dialog-messages"
             Layout.preferredWidth: panelRow.iconSize
@@ -176,6 +198,7 @@ PlasmoidItem {
         }
 
         UsageMeter {
+            visible: root.showChatgpt
             percent: root.chatgptRemainingPercent
             placeholder: root.placeholderText(root.chatgptError)
             resetText: root.chatgptResetAt > 0 ? root.localDateTime(root.chatgptResetAt) : ""
@@ -183,6 +206,7 @@ PlasmoidItem {
 
         // Separate the two providers with a faint vertical rule.
         Rectangle {
+            visible: root.showChatgpt
             Layout.preferredWidth: 1
             Layout.preferredHeight: panelRow.iconSize
             Layout.leftMargin: Kirigami.Units.smallSpacing

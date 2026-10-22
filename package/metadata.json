@@ -2,7 +2,7 @@
     "KPlugin": {
         "Id": "com.stark.ai-usage-monitor",
         "Name": "AI Usage Monitor",
-        "Description": "Shows the weekly ChatGPT Codex allowance and the current Claude 5-hour usage window",
+        "Description": "Shows the Claude 5-hour and weekly usage of the account that the Claude Code CLI is signed in to",
         "Category": "System Information",
         "Icon": "view-statistics",
         "Authors": [
@@ -11,7 +11,7 @@
             }
         ],
         "License": "MIT",
-        "Version": "1.0.0",
+        "Version": "1.1.0",
         "EnabledByDefault": true,
         "FormFactors": [
             "desktop",

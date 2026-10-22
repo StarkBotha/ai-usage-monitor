@@ -10,7 +10,14 @@ fetches the plan limits itself. The command prints lines such as:
 
 "Current session" is the 5-hour window and "Current week (all models)" is
 the weekly limit. The helper never reads Claude credentials; the CLI manages
-its own sign-in (``claude login``).
+its own sign-in (``claude auth login``).
+
+The helper reads whichever account the CLI is signed in to. To show the
+user which subscription the readings belong to, it also reports the email
+address from ``claude auth status``, which prints no tokens, and a short
+label for the panel. The labels come from a local file outside the
+repository (see ``account_labels_path``), so private account names are
+never committed.
 """
 
 from __future__ import annotations
@@ -29,6 +36,13 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 REQUEST_TIMEOUT_SECONDS = 45
+
+# "claude auth status" is local and fast; a short timeout keeps a stuck
+# lookup from delaying the usage reading.
+ACCOUNT_TIMEOUT_SECONDS = 15
+
+# Name of the local labels file, below the user's configuration directory.
+ACCOUNT_LABELS_FILE = Path("ai-usage-monitor") / "account-labels.json"
 
 # Line labels printed by /usage for the two limits the widget shows.
 FIVE_HOUR_LABEL = "Current session"
@@ -122,6 +136,75 @@ def usage_text() -> str:
     return text
 
 
+def account_email() -> Optional[str]:
+    """Return the email address of the account that the CLI is signed in to.
+
+    The account name is extra information for the panel label, so every
+    failure gives None instead of an error: the usage reading must not
+    depend on it.
+    """
+    try:
+        completed = subprocess.run(
+            [find_claude(), "auth", "status", "--json"],
+            cwd=str(Path.home()),
+            env=cli_environment(),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=ACCOUNT_TIMEOUT_SECONDS,
+        )
+        status = json.loads(completed.stdout)
+    except (UsageError, subprocess.TimeoutExpired, OSError, json.JSONDecodeError):
+        return None
+
+    # Copy only the email address; the rest of the status is not needed.
+    email = status.get("email") if isinstance(status, dict) else None
+    return email if isinstance(email, str) and email else None
+
+
+def account_labels_path() -> Path:
+    """Return the path of the local labels file.
+
+    The file is in $XDG_CONFIG_HOME, or in ~/.config when that is not set,
+    for example ~/.config/ai-usage-monitor/account-labels.json.
+    """
+    config_home = os.environ.get("XDG_CONFIG_HOME")
+    base = Path(config_home).expanduser() if config_home else Path.home() / ".config"
+    return base / ACCOUNT_LABELS_FILE
+
+
+def load_account_labels() -> Dict[str, str]:
+    """Read the local labels file as {email part before "@": panel label}.
+
+    The file is optional. A missing, unreadable or malformed file gives an
+    empty map, so the panel shows the part of the email before "@" instead.
+    Entries whose key or value is not text are ignored.
+    """
+    try:
+        raw = json.loads(account_labels_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        key: value
+        for key, value in raw.items()
+        if isinstance(key, str) and isinstance(value, str) and value
+    }
+
+
+def account_label(email: Optional[str]) -> Optional[str]:
+    """Return the panel label of an account, or None when the email is unknown.
+
+    The label is the entry for the part of the email before "@" in the local
+    labels file; without an entry it is that part of the email itself.
+    """
+    if not email:
+        return None
+    local_part = email.split("@", 1)[0]
+    return load_account_labels().get(local_part, local_part)
+
+
 def parse_reset(when: str, zone_name: str, now: datetime) -> int:
     """Convert a /usage reset time in a named timezone to Unix seconds.
 
@@ -180,8 +263,13 @@ def summarize(text: Optional[str] = None, now: Optional[datetime] = None) -> Dic
     """Return the small, authentication-free payload consumed by the widget."""
     usage = usage_text() if text is None else text
     current_time = now or datetime.now().astimezone()
+
+    # Look up the account only for a live reading, not for supplied text.
+    account = account_email() if text is None else None
     return {
         "ok": True,
+        "account": account,
+        "accountLabel": account_label(account),
         "fiveHour": limit_summary(usage, FIVE_HOUR_LABEL, current_time),
         "weekly": limit_summary(usage, WEEKLY_LABEL, current_time),
     }
